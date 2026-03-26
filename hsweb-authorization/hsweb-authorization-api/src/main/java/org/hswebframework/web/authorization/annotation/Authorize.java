@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2016 http://www.hswebframework.org
+ *  * Copyright 2020 http://www.hswebframework.org
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -18,9 +18,7 @@
 
 package org.hswebframework.web.authorization.annotation;
 
-import org.hswebframework.web.authorization.Permission;
-import org.hswebframework.web.authorization.Role;
-import org.hswebframework.web.authorization.User;
+import org.hswebframework.web.authorization.define.Phased;
 
 import java.lang.annotation.*;
 
@@ -30,52 +28,36 @@ import java.lang.annotation.*;
  * @author zhouhao
  * @see org.hswebframework.web.authorization.Authentication
  * @see org.hswebframework.web.authorization.define.AuthorizeDefinition
+ * @see Resource
+ * @see ResourceAction
+ * @see Dimension
+ * @see DataAccess
  * @since 3.0
  */
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @Inherited
 @Documented
-public @interface  Authorize {
+public @interface Authorize {
+
+    Resource[] resources() default {};
+
+    Dimension[] dimension() default {};
 
     /**
-     * 对角色授权,当使用按角色授权时，对模块以及操作级别授权方式失效
+     * 是否运行匿名访问,匿名访问时,直接允许执行,否则将进行权限验证.
      *
-     * @return 进 role id array
-     * @see Role#getId()
+     * @return 是否允许匿名访问
+     * @since 4.0.19
      */
-    String[] role() default {};
-
-    /**
-     * 对模块授权
-     *
-     * @return permission id array
-     * @see Permission#getId()
-     */
-    String[] permission() default {};
-
-    /**
-     * 如增删改查等
-     *
-     * @return action array
-     * @see Permission#getActions()
-     */
-    String[] action() default {};
-
-    /**
-     * 验证是否为指定user
-     *
-     * @return username array
-     * @see User#getUsername()
-     */
-    String[] user() default {};
+    boolean anonymous() default false;
 
     /**
      * 验证失败时返回的消息
      *
      * @return 验证失败提示的消息
      */
-    String message() default "{unauthorized}";
+    String message() default "无访问权限";
 
     /**
      * 是否合并类上的注解
@@ -92,13 +74,15 @@ public @interface  Authorize {
     Logical logical() default Logical.DEFAULT;
 
     /**
+     * @return 验证时机，在方法调用前还是调用后
+     */
+    Phased phased() default Phased.before;
+
+    /**
      * @return 是否忽略, 忽略后将不进行权限控制
      */
     boolean ignore() default false;
 
-    /**
-     *
-     * @return 数据权限控制
-     */
-    RequiresDataAccess[] dataAccess()default {};
+
+    String[] description() default {};
 }

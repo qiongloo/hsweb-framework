@@ -1,22 +1,26 @@
 package org.hswebframework.web.authorization.basic.aop;
 
-import org.hswebframework.web.AopUtils;
+import lombok.EqualsAndHashCode;
+import lombok.extern.slf4j.Slf4j;
+import org.hswebframework.web.aop.MethodInterceptorContext;
 import org.hswebframework.web.authorization.annotation.Authorize;
-import org.hswebframework.web.authorization.annotation.RequiresDataAccess;
-import org.hswebframework.web.authorization.annotation.RequiresExpression;
+import org.hswebframework.web.authorization.annotation.DataAccess;
+import org.hswebframework.web.authorization.annotation.Dimension;
+import org.hswebframework.web.authorization.annotation.ResourceAction;
 import org.hswebframework.web.authorization.basic.define.DefaultBasicAuthorizeDefinition;
 import org.hswebframework.web.authorization.basic.define.EmptyAuthorizeDefinition;
 import org.hswebframework.web.authorization.define.AuthorizeDefinition;
-import org.hswebframework.web.boost.aop.context.MethodInterceptorContext;
+import org.hswebframework.web.utils.AnnotationUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.CollectionUtils;
+import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.lang.reflect.Modifier;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -26,95 +30,95 @@ import java.util.concurrent.ConcurrentHashMap;
  * @see AopMethodAuthorizeDefinitionParser
  * @see AuthorizeDefinition
  */
-
+@Slf4j
 public class DefaultAopMethodAuthorizeDefinitionParser implements AopMethodAuthorizeDefinitionParser {
 
-    private Map<CacheKey, AuthorizeDefinition> cache = new ConcurrentHashMap<>();
+    private final Map<CacheKey, AuthorizeDefinition> cache = new ConcurrentHashMap<>();
 
+    private List<AopMethodAuthorizeDefinitionCustomizerParser> parserCustomizers;
 
-    private List<AopMethodAuthorizeDefinitionCustomizerParser> parserCustomers;
+    private static final Set<String> excludeMethodName = new HashSet<>(Arrays.asList("toString", "clone", "hashCode", "getClass"));
 
     @Autowired(required = false)
-    public void setParserCustomers(List<AopMethodAuthorizeDefinitionCustomizerParser> parserCustomers) {
-        this.parserCustomers = parserCustomers;
+    public void setParserCustomizers(List<AopMethodAuthorizeDefinitionCustomizerParser> parserCustomizers) {
+        this.parserCustomizers = parserCustomizers;
     }
 
     @Override
-    public AuthorizeDefinition parse(MethodInterceptorContext paramContext) {
-        CacheKey key = buildCacheKey(paramContext);
+    public List<AuthorizeDefinition> getAllParsed() {
+        return new ArrayList<>(cache.values());
+    }
+
+    @Override
+    @SuppressWarnings("all")
+    public AuthorizeDefinition parse(Class<?> target, Method method, MethodInterceptorContext context) {
+        if (excludeMethodName.contains(method.getName())) {
+            return null;
+        }
+        CacheKey key = buildCacheKey(target, method);
 
         AuthorizeDefinition definition = cache.get(key);
-        if (definition != null && (definition instanceof EmptyAuthorizeDefinition)) {
+        if (definition instanceof EmptyAuthorizeDefinition) {
             return null;
+        }
+        if (null != definition) {
+            return definition;
         }
         //使用自定义
-        if (!CollectionUtils.isEmpty(parserCustomers)) {
-            definition = parserCustomers.stream()
-                    .map(customer -> customer.parse(paramContext))
+        if (!CollectionUtils.isEmpty(parserCustomizers)) {
+            definition = parserCustomizers
+                    .stream()
+                    .map(customizer -> customizer.parse(target, method, context))
                     .filter(Objects::nonNull)
                     .findAny().orElse(null);
-            if (definition == null || definition instanceof EmptyAuthorizeDefinition) {
+            if (definition instanceof EmptyAuthorizeDefinition) {
                 return null;
             }
-
+            if (definition != null) {
+                return definition;
+            }
         }
 
-        Authorize classAuth = AopUtils.findAnnotation(paramContext.getTarget().getClass(), Authorize.class);
-        Authorize methodAuth = AopUtils.findMethodAnnotation(paramContext.getTarget().getClass(), paramContext.getMethod(), Authorize.class);
-        RequiresDataAccess classDataAccess = AopUtils.findAnnotation(paramContext.getTarget().getClass(), RequiresDataAccess.class);
-        RequiresDataAccess methodDataAccess = AopUtils.findMethodAnnotation(paramContext.getTarget().getClass(), paramContext.getMethod(), RequiresDataAccess.class);
+        Authorize annotation = AnnotationUtils.findAnnotation(target, method, Authorize.class);
 
-        RequiresExpression expression = AopUtils.findAnnotation(paramContext.getTarget().getClass(), RequiresExpression.class);
-
-        if (classAuth == null && methodAuth == null && classDataAccess == null && methodDataAccess == null && expression == null) {
+        if (isIgnoreMethod(method) || (annotation != null && annotation.ignore())) {
             cache.put(key, EmptyAuthorizeDefinition.instance);
             return null;
         }
-
-        if ((methodAuth != null && methodAuth.ignore()) || (classAuth != null && classAuth.ignore())) {
-            cache.put(key, EmptyAuthorizeDefinition.instance);
-            return null;
+        synchronized (cache) {
+            return cache.computeIfAbsent(key, (__) -> {
+                return DefaultBasicAuthorizeDefinition.from(target, method);
+            });
         }
-
-        DefaultBasicAuthorizeDefinition authorizeDefinition = new DefaultBasicAuthorizeDefinition();
-
-        if (methodAuth == null || methodAuth.merge())
-            authorizeDefinition.put(classAuth);
-
-        authorizeDefinition.put(methodAuth);
-
-        authorizeDefinition.put(expression);
-
-        authorizeDefinition.put(classDataAccess);
-
-        authorizeDefinition.put(methodDataAccess);
-
-        cache.put(key, authorizeDefinition);
-        return authorizeDefinition;
     }
 
-    public CacheKey buildCacheKey(MethodInterceptorContext context) {
-        return new CacheKey(ClassUtils.getUserClass(context.getTarget()), context.getMethod());
+    public CacheKey buildCacheKey(Class<?> target, Method method) {
+        return new CacheKey(ClassUtils.getUserClass(target), method);
     }
 
-    class CacheKey {
-        private Class  type;
-        private Method method;
+    @EqualsAndHashCode
+    static class CacheKey {
+        private final Class<?> type;
+        private final Method method;
 
-        public CacheKey(Class type, Method method) {
+        public CacheKey(Class<?> type, Method method) {
             this.type = type;
             this.method = method;
         }
+    }
 
-        @Override
-        public int hashCode() {
-            return Arrays.asList(type, method).hashCode();
-        }
+    public void destroy() {
+        cache.clear();
+    }
 
-        @Override
-        public boolean equals(Object obj) {
-            return obj != null && this.hashCode() == obj.hashCode();
+    static boolean isIgnoreMethod(Method method) {
+        //不是public的方法
+        if(!Modifier.isPublic(method.getModifiers())){
+            return true;
         }
+        //没有以下注解
+        return null == AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class)
+                && null == AnnotatedElementUtils.findMergedAnnotation(method, ResourceAction.class);
     }
 
 }

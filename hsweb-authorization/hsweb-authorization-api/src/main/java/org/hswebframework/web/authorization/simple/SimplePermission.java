@@ -1,55 +1,72 @@
 package org.hswebframework.web.authorization.simple;
 
+import lombok.*;
+import org.apache.commons.collections4.CollectionUtils;
 import org.hswebframework.web.authorization.Permission;
 import org.hswebframework.web.authorization.access.DataAccessConfig;
 
-import java.util.Set;
+import java.util.*;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /**
- * TODO 完成注释
- *
  * @author zhouhao
  */
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(exclude = "dataAccesses")
 public class SimplePermission implements Permission {
 
+    private static final long serialVersionUID = 7587266693680162184L;
+
     private String id;
+
+    private String name;
 
     private Set<String> actions;
 
     private Set<DataAccessConfig> dataAccesses;
 
-    public SimplePermission() {
-    }
+    private Map<String, Object> options;
 
-    public SimplePermission(String id, Set<String> actions) {
-        this.id = id;
-        this.actions = actions;
-    }
-
-    @Override
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    @Override
     public Set<String> getActions() {
+        if (actions == null) {
+            actions = new java.util.HashSet<>();
+        }
         return actions;
     }
 
-    public void setActions(Set<String> actions) {
-        this.actions = actions;
-    }
-
-    @Override
     public Set<DataAccessConfig> getDataAccesses() {
+        if (dataAccesses == null) {
+            dataAccesses = new java.util.HashSet<>();
+        }
         return dataAccesses;
     }
 
-    public void setDataAccesses(Set<DataAccessConfig> dataAccesses) {
-        this.dataAccesses = dataAccesses;
+    @Override
+    public Permission copy(Predicate<String> actionFilter,
+                           Predicate<DataAccessConfig> dataAccessFilter) {
+        SimplePermission permission = new SimplePermission();
+
+        permission.setId(id);
+        permission.setName(name);
+        permission.setActions(getActions().stream().filter(actionFilter).collect(Collectors.toSet()));
+        permission.setDataAccesses(getDataAccesses().stream().filter(dataAccessFilter).collect(Collectors.toSet()));
+        if (options != null) {
+            permission.setOptions(new HashMap<>(options));
+        }
+        return permission;
+    }
+
+    public Permission copy() {
+        return copy(action -> true, conf -> true);
+    }
+
+    @Override
+    public String toString() {
+        return id + (CollectionUtils.isNotEmpty(actions) ? ":" + String.join(",", actions) : "");
     }
 }

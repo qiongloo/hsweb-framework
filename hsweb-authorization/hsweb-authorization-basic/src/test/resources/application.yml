@@ -1,0 +1,15 @@
+hsweb:
+  auth:
+   users:
+    admin:
+      username: admin
+      password: admin
+      permissions-simple:
+          user-token:
+            - get
+            - update
+easyorm:
+  dialect: h2
+logging:
+  level:
+    org.hswebframework: debug

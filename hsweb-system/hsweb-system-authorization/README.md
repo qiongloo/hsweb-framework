@@ -1,12 +1,24 @@
 ## 权限功能模块
 
-提供用户,角色,权限管理
+1. 提供用户,角色管理等基础功能
+2. 提供统一的多维度,可拓展的权限分配
 
-## 授权
-[AuthorizationController](hsweb-system-authorization-controller/src/main/java/org/hswebframework/web/controller/authorization/AuthorizationController.java)
-仅进行基础授权,通过触发`AuthorizationListener`,进行自定义控制逻辑.详细方式见:[hsweb-authorization-api](../../hsweb-authorization/hsweb-authorization-api#listener)
+        权限设置不再像以往那样和角色,用户直接关联.在此模块里,权限设置是通用的.
+        你可以为用户,角色,自己定义的维度比如:机构,部门,岗位等维度进行权限分配.
+        而且不仅仅支持基本等RBAC权限控制,还可以自定义控制到数据行和列.
+        
+3. 提供系统菜单管理
+        
+## 使用
+引入依赖到`pom.xml`
+```xml
+<dependency>
+    <groupId>org.hswebframework.web</groupId>
+    <artifactId>hsweb-system-authorization-starter</artifactId>
+    <version>${hsweb.framework.version}</version>
+</dependency>
+```
 
-## 权限设置
-[AuthorizationSettingService]() 提供通用的权限设置,可在想要的地方进行设置,
-然后将用户支持的设置类型提供给[AuthorizationSettingTypeSupplier](),在初始化权限的时候,即可对相应的设置进行初始化.
-
+## 结构
+ 
+![uml](./uml.png "uml.png")

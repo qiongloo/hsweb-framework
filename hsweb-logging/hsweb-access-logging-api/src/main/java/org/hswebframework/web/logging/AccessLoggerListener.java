@@ -1,9 +1,13 @@
 package org.hswebframework.web.logging;
 
+import org.hswebframework.web.logging.events.AccessLoggerAfterEvent;
+
 /**
  * 访问日志监听器,实现此接口并注入到spring容器即可获取访问日志信息
  *
  * @author zhouhao
+ * @see AccessLoggerAfterEvent
+ * @see org.hswebframework.web.logging.events.AccessLoggerBeforeEvent
  * @since 3.0
  */
 public interface AccessLoggerListener {
@@ -14,4 +18,7 @@ public interface AccessLoggerListener {
      * @param loggerInfo 产生的日志信息
      */
     void onLogger(AccessLoggerInfo loggerInfo);
+
+    default void onLogBefore(AccessLoggerInfo loggerInfo) {
+    }
 }

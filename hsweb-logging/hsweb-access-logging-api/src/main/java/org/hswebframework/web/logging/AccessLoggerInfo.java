@@ -1,12 +1,17 @@
 package org.hswebframework.web.logging;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import java.io.PrintWriter;
 import java.io.Serializable;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.StringJoiner;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -16,7 +21,14 @@ import java.util.function.Function;
  * @author zhouhao
  * @since 3.0
  */
+@Getter
+@Setter
 public class AccessLoggerInfo {
+
+    /**
+     * 日志id
+     */
+    private String id;
 
     /**
      * 访问的操作
@@ -40,7 +52,7 @@ public class AccessLoggerInfo {
     /**
      * 访问对应的java类
      */
-    private Class target;
+    private Class<?> target;
 
     /**
      * 请求的参数,参数为java方法的参数而不是http参数,key为参数名,value为参数值.
@@ -61,6 +73,11 @@ public class AccessLoggerInfo {
      * http 请求头集合
      */
     private Map<String, String> httpHeaders;
+
+    /**
+     * 上下文
+     */
+    private Map<String, String> context;
 
     /**
      * http 请求方法, GET,POST...
@@ -91,125 +108,19 @@ public class AccessLoggerInfo {
      */
     private Throwable exception;
 
-
-    public String getAction() {
-        return action;
-    }
-
-    public void setAction(String action) {
-        this.action = action;
-    }
-
-    public String getDescribe() {
-        return describe;
-    }
-
-    public void setDescribe(String describe) {
-        this.describe = describe;
-    }
-
-    public Method getMethod() {
-        return method;
-    }
-
-    public void setMethod(Method method) {
-        this.method = method;
-    }
-
-    public Class getTarget() {
-        return target;
-    }
-
-    public void setTarget(Class target) {
-        this.target = target;
-    }
-
-    public Map<String, Object> getParameters() {
-        return parameters;
-    }
-
-    public void setParameters(Map<String, Object> parameters) {
-        this.parameters = parameters;
-    }
-
-    public String getIp() {
-        return ip;
-    }
-
-    public void setIp(String ip) {
-        this.ip = ip;
-    }
-
-    public String getUrl() {
-        return url;
-    }
-
-    public void setUrl(String url) {
-        this.url = url;
-    }
-
-    public Map<String, String> getHttpHeaders() {
-        return httpHeaders;
-    }
-
-    public void setHttpHeaders(Map<String, String> httpHeaders) {
-        this.httpHeaders = httpHeaders;
-    }
-
-    public String getHttpMethod() {
-        return httpMethod;
-    }
-
-    public void setHttpMethod(String httpMethod) {
-        this.httpMethod = httpMethod;
-    }
-
-    public Object getResponse() {
-        return response;
-    }
-
-    public void setResponse(Object response) {
-        this.response = response;
-    }
-
-    public long getRequestTime() {
-        return requestTime;
-    }
-
-    public void setRequestTime(long requestTime) {
-        this.requestTime = requestTime;
-    }
-
-    public long getResponseTime() {
-        return responseTime;
-    }
-
-    public void setResponseTime(long responseTime) {
-        this.responseTime = responseTime;
-    }
-
-    public Throwable getException() {
-        return exception;
-    }
-
-    public void setException(Throwable exception) {
-        this.exception = exception;
-    }
-
-    public Map<String, Object> toSimpleMap(Function<Object, Serializable> noSerialExchange) {
-        return toSimpleMap(noSerialExchange, new LinkedHashMap<>());
-    }
-
     public Map<String, Object> toSimpleMap(Function<Object, Serializable> objectFilter, Map<String, Object> map) {
         map.put("action", action);
         map.put("describe", describe);
         if (method != null) {
             StringJoiner methodAppender = new StringJoiner(",", method.getName().concat("("), ")");
-            String[] parameterNames = parameters.keySet().toArray(new String[parameters.size()]);
-            Class[] parameterTypes = method.getParameterTypes();
+            String[] parameterNames = parameters.keySet().toArray(new String[0]);
+            Class<?>[] parameterTypes = method.getParameterTypes();
 
             for (int i = 0; i < parameterTypes.length; i++) {
-                methodAppender.add(parameterTypes[i].getSimpleName().concat(" ").concat(parameterNames.length >= i ? parameterNames[i] : ("arg" + i)));
+                methodAppender.add(parameterTypes[i]
+                                           .getSimpleName()
+                                           .concat(" ")
+                                           .concat(parameterNames.length > i ? parameterNames[i] : ("arg" + i)));
             }
             map.put("method", methodAppender.toString());
         }
@@ -229,6 +140,7 @@ public class AccessLoggerInfo {
         map.put("response", objectFilter.apply(response));
         map.put("requestTime", requestTime);
         map.put("responseTime", responseTime);
+        map.put("id", id);
         map.put("useTime", responseTime - requestTime);
         if (exception != null) {
             StringWriter writer = new StringWriter();
@@ -236,5 +148,28 @@ public class AccessLoggerInfo {
             map.put("exception", writer.toString());
         }
         return map;
+    }
+
+
+    public void putAccessInfo(RequestInfo info) {
+        setIp(info.getIpAddr());
+        setHttpMethod(info.getRequestMethod());
+        setHttpHeaders(info.getHeaders());
+        setUrl(info.getPath());
+        setContext(info.getContext());
+    }
+
+    public void putContext(Map<String,String> context) {
+        if (this.context == null) {
+            this.context = new ConcurrentHashMap<>();
+        }
+        this.context.putAll(context);
+    }
+
+    public void putContext(String key, Object value) {
+        if (this.context == null) {
+            this.context = new ConcurrentHashMap<>();
+        }
+        this.context.put(key, String.valueOf(value));
     }
 }

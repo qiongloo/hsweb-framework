@@ -1,5 +1,5 @@
 /*
- *  Copyright 2016 http://www.hswebframework.org
+ *  Copyright 2020 http://www.hswebframework.org
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,51 +18,64 @@
 
 package org.hswebframework.web.authorization.token;
 
-import org.hswebframework.web.authorization.listener.AuthorizationListenerDispatcher;
-import org.hswebframework.web.authorization.token.event.UserSignInEvent;
+import lombok.Getter;
+import lombok.Setter;
+import org.hswebframework.web.authorization.Authentication;
+import org.hswebframework.web.authorization.exception.AccessDenyException;
+import org.hswebframework.web.authorization.token.event.UserTokenChangedEvent;
+import org.hswebframework.web.authorization.token.event.UserTokenCreatedEvent;
+import org.hswebframework.web.authorization.token.event.UserTokenRemovedEvent;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Collectors;
+import java.util.function.Supplier;
 
 /**
- * 授权容器,用来操作所有已经授权的用户
+ * 默认到用户令牌管理器，使用ConcurrentMap来存储令牌信息
  *
  * @author zhouhao
  * @since 3.0
  */
 public class DefaultUserTokenManager implements UserTokenManager {
 
-    protected final ConcurrentMap<String, SimpleUserToken> tokenUserStorage;
+    protected final ConcurrentMap<String, LocalUserToken> tokenStorage;
+
+    protected final ConcurrentMap<String, Set<String>> userStorage;
+
+
+    @Getter
+    @Setter
+    private Map<String, AllopatricLoginMode> allopatricLoginModes = new HashMap<>();
+
 
     public DefaultUserTokenManager() {
         this(new ConcurrentHashMap<>(256));
+
     }
 
-    public DefaultUserTokenManager(ConcurrentMap<String, SimpleUserToken> storage) {
-        tokenUserStorage = storage;
+    public DefaultUserTokenManager(ConcurrentMap<String, LocalUserToken> tokenStorage) {
+        this(tokenStorage, new ConcurrentHashMap<>());
     }
 
-    //令牌超时事件,默认3600秒
-    private long timeout = 3600;
+    public DefaultUserTokenManager(ConcurrentMap<String, LocalUserToken> tokenStorage, ConcurrentMap<String, Set<String>> userStorage) {
+        this.tokenStorage = tokenStorage;
+        this.userStorage = userStorage;
+    }
 
     //异地登录模式，默认允许异地登录
     private AllopatricLoginMode allopatricLoginMode = AllopatricLoginMode.allow;
 
     //事件转发器
-    private AuthorizationListenerDispatcher authorizationListenerDispatcher;
+    private ApplicationEventPublisher eventPublisher;
 
-    public void setAuthorizationListenerDispatcher(AuthorizationListenerDispatcher authorizationListenerDispatcher) {
-        this.authorizationListenerDispatcher = authorizationListenerDispatcher;
-    }
-
-    public void setTimeout(long timeout) {
-        this.timeout = timeout;
-    }
-
-    public long getTimeout() {
-        return timeout;
+    @Autowired(required = false)
+    public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
     }
 
     public void setAllopatricLoginMode(AllopatricLoginMode allopatricLoginMode) {
@@ -73,122 +86,233 @@ public class DefaultUserTokenManager implements UserTokenManager {
         return allopatricLoginMode;
     }
 
-    private SimpleUserToken checkTimeout(SimpleUserToken detail) {
-        if (null == detail) return null;
+    protected Set<String> getUserToken(String userId) {
+        return userStorage.computeIfAbsent(userId, key -> new HashSet<>());
+    }
+
+    private Mono<UserToken> checkTimeout(UserToken detail) {
+        if (null == detail) {
+            return Mono.empty();
+        }
         if (detail.getMaxInactiveInterval() <= 0) {
-            return detail;
+            return Mono.just(detail);
         }
         if (System.currentTimeMillis() - detail.getLastRequestTime() > detail.getMaxInactiveInterval()) {
-            detail.setState(TokenState.expired);
-            return detail;
+            return changeTokenState(detail, TokenState.expired)
+                    .thenReturn(detail);
         }
-        return detail;
+        return Mono.just(detail);
     }
 
     @Override
-    public SimpleUserToken getByToken(String token) {
-        return checkTimeout(tokenUserStorage.get(token));
-    }
-
-    @Override
-    public List<UserToken> getByUserId(String userId) {
-        return tokenUserStorage.values().stream()
-                .filter(detail -> detail.getUserId().equals(userId) && checkTimeout(detail) != null)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public boolean userIsLoggedIn(String userId) {
-        for (UserToken userToken : getByUserId(userId)) {
-            if (userToken.isEffective()) return true;
+    public Mono<UserToken> getByToken(String token) {
+        if (token == null) {
+            return Mono.empty();
         }
-        return false;
+        return checkTimeout(tokenStorage.get(token));
     }
 
     @Override
-    public boolean tokenIsLoggedIn(String token) {
-
-        return getByToken(token) != null;
+    public Flux<UserToken> getByUserId(String userId) {
+        if (userId == null) {
+            return Flux.empty();
+        }
+        Set<String> tokens = getUserToken(userId);
+        if (tokens.isEmpty()) {
+            userStorage.remove(userId);
+            return Flux.empty();
+        }
+        return Flux.fromStream(tokens
+                                       .stream()
+                                       .map(tokenStorage::get)
+                                       .filter(Objects::nonNull));
     }
 
     @Override
-    public long totalUser() {
-        return tokenUserStorage.values()
-                .stream()
-                .peek(this::checkTimeout)//检查是否已经超时
-                .filter(UserToken::isEffective)//只返回有效的
-                .map(UserToken::getUserId)
-                .distinct()//去重复
-                .count();
+    public Mono<Boolean> userIsLoggedIn(String userId) {
+        if (userId == null) {
+            return Mono.just(false);
+        }
+        return getByUserId(userId)
+                .any(UserToken::isNormal);
     }
 
     @Override
-    public long totalToken() {
-        return tokenUserStorage.values()
-                .stream()
-                .peek(this::checkTimeout)//检查是否已经超时
-                .filter(UserToken::isEffective)//只返回有效的
-                .count();
+    public Mono<Boolean> tokenIsLoggedIn(String token) {
+        if (token == null) {
+            return Mono.just(false);
+        }
+        return getByToken(token)
+                .map(UserToken::isNormal)
+                .defaultIfEmpty(false);
     }
 
     @Override
-    public List<UserToken> allLoggedUser() {
-        return tokenUserStorage.values()
-                .stream()
-                .map(this::checkTimeout)
-                .filter(UserToken::isEffective)
-                .collect(Collectors.toList());
+    public Mono<Integer> totalUser() {
+        return Mono.just(userStorage.size());
     }
 
     @Override
-    public void signOutByUserId(String userId) {
-        getByUserId(userId).forEach(detail -> signOutByToken(detail.getToken()));
+    public Mono<Integer> totalToken() {
+        return Mono.just(tokenStorage.size());
     }
 
     @Override
-    public void signOutByToken(String token) {
-        tokenUserStorage.remove(token);
+    public Flux<UserToken> allLoggedUser() {
+        return Flux.fromIterable(tokenStorage.values());
     }
 
     @Override
-    public void changeTokenState(String token, TokenState state) {
-        SimpleUserToken userToken = getByToken(token);
-        if (null != userToken)
-            userToken.setState(state);
+    public Mono<Void> signOutByUserId(String userId) {
+        if (null == userId) {
+            return Mono.empty();
+        }
+        return Mono.defer(() -> {
+            Set<String> tokens = getUserToken(userId);
+            return Flux
+                .fromIterable(tokens)
+                .flatMap(token -> signOutByToken(token, false))
+                .then(Mono.fromRunnable(() -> {
+                    tokens.clear();
+                    userStorage.remove(userId);
+                }));
+        });
     }
 
-    @Override
-    public void changeUserState(String user, TokenState state) {
-        getByUserId(user).forEach(token -> changeTokenState(token.getToken(), state));
-    }
-
-    @Override
-    public UserToken signIn(String token, String userId, long maxInactiveInterval) {
-        SimpleUserToken detail = new SimpleUserToken(userId, token);
-        if (null != authorizationListenerDispatcher)
-            authorizationListenerDispatcher.doEvent(new UserSignInEvent(detail));
-        if (allopatricLoginMode == AllopatricLoginMode.deny) {
-            detail.setState(TokenState.deny);
-        } else if (allopatricLoginMode == AllopatricLoginMode.offlineOther) {
-            detail.setState(TokenState.effective);
-            SimpleUserToken oldToken = (SimpleUserToken) getByUserId(userId);
-            if (oldToken != null) {
-                //踢下线
-                oldToken.setState(TokenState.offline);
+    private Mono<Void> signOutByToken(String token, boolean removeUserToken) {
+        if (token != null) {
+            LocalUserToken tokenObject = tokenStorage.remove(token);
+            if (tokenObject != null) {
+                String userId = tokenObject.getUserId();
+                if (removeUserToken) {
+                    Set<String> tokens = getUserToken(userId);
+                    if (!tokens.isEmpty()) {
+                        tokens.remove(token);
+                    }
+                    if (tokens.isEmpty()) {
+                        userStorage.remove(tokenObject.getUserId());
+                    }
+                }
+                return new UserTokenRemovedEvent(tokenObject).publish(eventPublisher);
             }
-        } else {
-            detail.setState(TokenState.effective);
         }
-        detail.setMaxInactiveInterval(maxInactiveInterval);
-        tokenUserStorage.put(token, detail);
-        return detail;
+        return Mono.empty();
     }
 
     @Override
-    public void touch(String token) {
-        SimpleUserToken userToken = tokenUserStorage.get(token);
-        if (null != userToken)
-            userToken.touch();
+    public Mono<Void> signOutByToken(String token) {
+        return signOutByToken(token, true);
     }
 
+    public Mono<Void> changeTokenState(UserToken userToken, TokenState state) {
+        if (null != userToken) {
+            LocalUserToken token = ((LocalUserToken) userToken);
+            LocalUserToken copy = token.copy();
+
+            token.setState(state);
+            syncToken(userToken);
+
+            return new UserTokenChangedEvent(copy, userToken).publish(eventPublisher);
+        }
+        return Mono.empty();
+    }
+
+    @Override
+    public Mono<Void> changeTokenState(String token, TokenState state) {
+        return getByToken(token)
+                .flatMap(t -> changeTokenState(t, state));
+    }
+
+    @Override
+    public Mono<Void> changeUserState(String user, TokenState state) {
+        return Mono.from(getByUserId(user)
+                                 .flatMap(token -> changeTokenState(token.getToken(), state)));
+    }
+
+    @Override
+    public Mono<UserToken> signIn(String token, String type, String userId, long maxInactiveInterval) {
+
+        return doSignIn(token, type, userId, maxInactiveInterval, LocalUserToken::new)
+                .cast(UserToken.class);
+
+    }
+
+    private <T extends LocalUserToken> Mono<T> doSignIn(String token, String type, String userId, long maxInactiveInterval, Supplier<T> tokenSupplier) {
+
+        return Mono.defer(() -> {
+            T detail = tokenSupplier.get();
+            detail.setUserId(userId);
+            detail.setToken(token);
+            detail.setType(type);
+            detail.setMaxInactiveInterval(maxInactiveInterval);
+            detail.setState(TokenState.normal);
+            Mono<Void> doSign = Mono.defer(() -> {
+                tokenStorage.put(token, detail);
+
+                getUserToken(userId).add(token);
+
+                return new UserTokenCreatedEvent(detail).publish(eventPublisher);
+            });
+            AllopatricLoginMode mode = allopatricLoginModes.getOrDefault(type, allopatricLoginMode);
+            if (mode == AllopatricLoginMode.deny) {
+                return getByUserId(userId)
+                        .filter(userToken -> type.equals(userToken.getType()))
+                        .flatMap(this::checkTimeout)
+                        .filterWhen(t -> {
+                            if (t.isNormal()) {
+                                return Mono.error(new AccessDenyException("error.logged_in_elsewhere"));
+                            }
+                            return Mono.empty();
+                        })
+                        .then(doSign)
+                        .thenReturn(detail);
+            } else if (mode == AllopatricLoginMode.offlineOther) {
+                return getByUserId(userId)
+                        .filter(userToken -> type.equals(userToken.getType()))
+                        .flatMap(userToken -> changeTokenState(userToken, TokenState.offline))
+                        .then(doSign)
+                        .thenReturn(detail);
+            }
+            return doSign.thenReturn(detail);
+        });
+
+    }
+
+    @Override
+    public Mono<AuthenticationUserToken> signIn(String token, String type, String userId, long maxInactiveInterval, Authentication authentication) {
+        return this
+                .doSignIn(token, type, userId, maxInactiveInterval, () -> new LocalAuthenticationUserToken(authentication))
+                .cast(AuthenticationUserToken.class);
+    }
+
+    @Override
+    public Mono<Void> touch(String token) {
+        LocalUserToken userToken = tokenStorage.get(token);
+        if (null != userToken) {
+            userToken.touch();
+            syncToken(userToken);
+        }
+        return Mono.empty();
+    }
+
+    @Override
+    public Mono<Void> checkExpiredToken() {
+
+        return Flux
+                .fromIterable(tokenStorage.values())
+                .doOnNext(this::checkTimeout)
+                .filter(UserToken::isExpired)
+                .map(UserToken::getToken)
+                .flatMap(this::signOutByToken)
+                .then();
+    }
+
+    /**
+     * 同步令牌信息,如果使用redisson等来存储token，应该重写此方法并调用{@link this#tokenStorage}.put
+     *
+     * @param userToken 令牌
+     */
+    protected void syncToken(UserToken userToken) {
+        //do noting
+    }
 }

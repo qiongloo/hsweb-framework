@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2016 http://www.hswebframework.org
+ *  * Copyright 2020 http://www.hswebframework.org
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -18,11 +18,7 @@
 
 package org.hswebframework.web.id;
 
-import org.hswebframework.utils.RandomUtil;
-
-import java.math.BigInteger;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import org.hswebframework.web.utils.DigestUtils;
 
 /**
  * ID生成器,用于生成ID
@@ -30,20 +26,47 @@ import java.security.NoSuchAlgorithmException;
  * @author zhouhao
  * @since 3.0
  */
+@FunctionalInterface
 public interface IDGenerator<T> {
     T generate();
 
-    IDGenerator<String> UUID = java.util.UUID.randomUUID()::toString;
+    /**
+     * 空ID生成器
+     */
+    IDGenerator<?> NULL = () -> null;
 
-    IDGenerator<String> RANDOM = RandomUtil::randomChar;
+    @SuppressWarnings("unchecked")
+    static <T> IDGenerator<T> getNullGenerator() {
+        return (IDGenerator<T>) NULL;
+    }
 
-    IDGenerator<String> MD5 = () -> {
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            md.update(UUID.generate().concat(RandomUtil.randomChar()).getBytes());
-            return new BigInteger(1, md.digest()).toString(16);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
-    };
+    /**
+     * 使用UUID生成id
+     */
+    IDGenerator<String> UUID = () -> java.util.UUID.randomUUID().toString();
+
+    /**
+     * 随机字符
+     */
+    IDGenerator<String> RANDOM = RandomIdGenerator.GLOBAL;
+
+    /**
+     * md5(uuid())
+     */
+    IDGenerator<String> MD5 = () -> DigestUtils.md5Hex(UUID.generate());
+
+    /**
+     * 雪花算法
+     */
+    IDGenerator<Long> SNOW_FLAKE = SnowflakeIdGenerator.getInstance()::nextId;
+
+    /**
+     * 雪花算法转String
+     */
+    IDGenerator<String> SNOW_FLAKE_STRING = () -> String.valueOf(SNOW_FLAKE.generate());
+
+    /**
+     * 雪花算法的16进制
+     */
+    IDGenerator<String> SNOW_FLAKE_HEX = () -> Long.toHexString(SNOW_FLAKE.generate());
 }

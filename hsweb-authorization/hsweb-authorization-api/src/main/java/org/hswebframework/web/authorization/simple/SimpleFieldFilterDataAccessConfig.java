@@ -1,5 +1,7 @@
 package org.hswebframework.web.authorization.simple;
 
+import org.hswebframework.web.authorization.access.DataAccessType;
+import org.hswebframework.web.authorization.access.DefaultDataAccessType;
 import org.hswebframework.web.authorization.access.FieldFilterDataAccessConfig;
 
 import java.util.Arrays;
@@ -16,6 +18,8 @@ import static org.hswebframework.web.authorization.access.DataAccessConfig.Defau
  * @since 3.0
  */
 public class SimpleFieldFilterDataAccessConfig extends AbstractDataAccessConfig implements FieldFilterDataAccessConfig {
+    private static final long serialVersionUID = 8080660575093151866L;
+
     private Set<String> fields;
 
     public SimpleFieldFilterDataAccessConfig() {
@@ -35,7 +39,7 @@ public class SimpleFieldFilterDataAccessConfig extends AbstractDataAccessConfig 
     }
 
     @Override
-    public String getType() {
-        return DENY_FIELDS;
+    public DataAccessType getType() {
+        return DefaultDataAccessType.FIELD_DENY;
     }
 }

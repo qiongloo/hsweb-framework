@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2016 http://www.hswebframework.org
+ *  * Copyright 2020 http://www.hswebframework.org
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ public @interface AccessLogger {
      * @return 对类或方法的简单说明
      * @see AccessLoggerInfo#getAction()
      */
-    String value();
+    String value() default "";
 
     /**
      * @return 对类或方法的详细描述
@@ -45,4 +45,10 @@ public @interface AccessLogger {
      * @return 是否取消日志记录, 如果不想记录某些方法或者类, 设置为true即可
      */
     boolean ignore() default false;
+
+    /**
+     * @return 忽略记载方法的请求参数
+     * <p>如果不想记录方法全部或某些参数，则可以配置返回*或者对应参数名（多个用逗号分割）</p>
+     */
+    String[] ignoreParameter() default "";
 }

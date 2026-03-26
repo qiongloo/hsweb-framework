@@ -5,11 +5,14 @@
     <parent>
         <artifactId>hsweb-authorization</artifactId>
         <groupId>org.hswebframework.web</groupId>
-        <version>3.0-SNAPSHOT</version>
+        <version>4.0.20</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
+    <name>${artifactId}</name>
     <artifactId>hsweb-authorization-basic</artifactId>
+
+    <description>实现hsweb-authorization-api的相关接口以及使用aop实现RBAC和数据权限的控制</description>
 
     <dependencies>
         <dependency>
@@ -17,18 +20,44 @@
             <artifactId>hsweb-authorization-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+
         <dependency>
             <groupId>org.hswebframework</groupId>
             <artifactId>hsweb-expands-script</artifactId>
         </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
         </dependency>
 
         <dependency>
+            <groupId>org.hswebframework.web</groupId>
+            <artifactId>hsweb-commons-crud</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.hswebframework.web</groupId>
+            <artifactId>hsweb-access-logging-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-webmvc</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webflux</artifactId>
         </dependency>
 
         <dependency>
@@ -39,22 +68,42 @@
             <groupId>org.hswebframework</groupId>
             <artifactId>hsweb-easy-orm-rdb</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.hswebframework.web</groupId>
-            <artifactId>hsweb-commons-controller</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+
         <dependency>
             <groupId>javax.servlet</groupId>
-            <artifactId>servlet-api</artifactId>
-            <version>2.5</version>
-            <scope>provided</scope>
+            <artifactId>javax.servlet-api</artifactId>
+            <optional>true</optional>
         </dependency>
+
         <dependency>
-            <groupId>org.hswebframework.web</groupId>
-            <artifactId>hsweb-commons-entity</artifactId>
-            <version>${project.version}</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-r2dbc</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.r2dbc</groupId>
+            <artifactId>r2dbc-h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-aspects</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
 </project>

@@ -14,25 +14,21 @@ import java.util.Objects;
 import java.util.function.BiFunction;
 
 import static org.hswebframework.web.authorization.access.DataAccessConfig.DefaultType.*;
-import static org.hswebframework.web.authorization.access.DataAccessConfig.DefaultType.CUSTOM;
 import static org.hswebframework.web.authorization.access.DataAccessConfig.DefaultType.OWN_CREATED;
 
 /**
- * TODO 完成注释
- *
  * @author zhouhao
  */
 public class SimpleDataAccessConfigBuilderFactory implements DataAccessConfigBuilderFactory {
 
     private List<String> defaultSupportConvert = Arrays.asList(
-            CUSTOM,
             OWN_CREATED,
-            FIELD_SCOPE,
+            DIMENSION_SCOPE,
             DENY_FIELDS);
 
-    private List<DataAccessConfigConvert> converts = new LinkedList<>();
+    private List<DataAccessConfigConverter> converts = new LinkedList<>();
 
-    public SimpleDataAccessConfigBuilderFactory addConvert(DataAccessConfigConvert configBuilderConvert) {
+    public SimpleDataAccessConfigBuilderFactory addConvert(DataAccessConfigConverter configBuilderConvert) {
         Objects.requireNonNull(configBuilderConvert);
         converts.add(configBuilderConvert);
         return this;
@@ -46,13 +42,13 @@ public class SimpleDataAccessConfigBuilderFactory implements DataAccessConfigBui
         return defaultSupportConvert;
     }
 
-    protected DataAccessConfigConvert createJsonConfig(String supportType, Class<? extends AbstractDataAccessConfig> clazz) {
+    protected DataAccessConfigConverter createJsonConfig(String supportType, Class<? extends AbstractDataAccessConfig> clazz) {
         return createConfig(supportType, (action, config) -> JSON.parseObject(config, clazz));
     }
 
 
-    protected DataAccessConfigConvert createConfig(String supportType, BiFunction<String, String, ? extends DataAccessConfig> function) {
-        return new DataAccessConfigConvert() {
+    protected DataAccessConfigConverter createConfig(String supportType, BiFunction<String, String, ? extends DataAccessConfig> function) {
+        return new DataAccessConfigConverter() {
             @Override
             public boolean isSupport(String type, String action, String config) {
                 return supportType.equals(type);
@@ -71,20 +67,20 @@ public class SimpleDataAccessConfigBuilderFactory implements DataAccessConfigBui
 
     @PostConstruct
     public void init() {
-        if (defaultSupportConvert.contains(FIELD_SCOPE))
-            converts.add(createJsonConfig(FIELD_SCOPE, SimpleFiledScopeDataAccessConfig.class));
 
-        if (defaultSupportConvert.contains(DENY_FIELDS))
+
+        if (defaultSupportConvert.contains(DENY_FIELDS)) {
             converts.add(createJsonConfig(DENY_FIELDS, SimpleFieldFilterDataAccessConfig.class));
+        }
 
-        if (defaultSupportConvert.contains(OWN_CREATED))
+        if (defaultSupportConvert.contains(DIMENSION_SCOPE)) {
+            converts.add(createJsonConfig(DIMENSION_SCOPE, DimensionDataAccessConfig.class));
+        }
+
+        if (defaultSupportConvert.contains(OWN_CREATED)) {
             converts.add(createConfig(OWN_CREATED, (action, config) -> new SimpleOwnCreatedDataAccessConfig(action)));
+        }
 
-        if (defaultSupportConvert.contains(SCRIPT))
-            converts.add(createJsonConfig(SCRIPT, SimpleScriptDataAccessConfig.class));
-
-        if (defaultSupportConvert.contains(CUSTOM))
-            converts.add(createConfig(CUSTOM, (action, config) -> new SimpleCustomDataAccessConfigConfig(config)));
     }
 
     @Override
